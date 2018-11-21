@@ -1,0 +1,167 @@
+---
+title: "microsoft"
+author: "Cyrille Nzouda, Ph.D."
+date: "November 20, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Loading Packages
+
+```{r}
+library(data.table)
+library(mltools)
+```
+
+
+## Loading Data
+
+```{r cars}
+FraudData<-read.csv("C:\\Users\\cyril\\Documents\\cyrille\\FraudTrain.csv", header=T)
+FraudData<-as.data.table(FraudData)
+FraudData[, .N, by= "outcome"] #Count number of Fraods and Not Frauds
+```
+
+#Target variable transformation to binary: 0= ok, 1= fraud
+
+```{r pressure, echo=FALSE}
+ # one-hot encode the categorical data
+Y<-FraudData[, .(Target= ifelse(outcome=="OK", yes=0, no=1))]
+Y[, .N, by="Target"]
+```
+
+## Feautures  transformation. Change atty to numeric and binary variable
+
+```{r pressure, echo=FALSE}
+ # one-hot encode the categorical data
+FraudData2<-FraudData
+X<-one_hot(as.data.table(FraudData2[, c("outcome"):=NULL]))
+X
+
+```
+
+
+# split train and test
+
+```{r}
+n<-nrow(FraudData)
+set.seed(1000)
+s<-sample.int(n, size = round(n*0.6))
+
+  Xtrain1 = X[s,]
+
+  Ytrain = Y[s,]
+
+  Xtest1 = X[-s,]
+
+  Ytest = Y[-s,]
+```
+
+#Normalize column "age" and "claim"
+```{r}
+
+ztrain<-Xtrain1[, .(Age=scale(Age), Claim=scale(Claim))]
+Xtrain2<-Xtrain1
+Xtrain2$Age<-NULL
+Xtrain2$Claim<-NULL
+Xtrain<-cbind(ztrain, Xtrain2)
+Xtrain<-as.matrix(Xtrain)
+
+ztest<-Xtest1[, .(Age=scale(Age), Claim=scale(Claim))]
+Xtest2<-Xtest1
+Xtest2$Age<-NULL
+Xtest2$Claim<-NULL
+Xtest<-cbind(ztest, Xtest2)
+Xtest<-as.matrix(Xtest)
+```
+
+#Estimate the accuracy with only random weight
+```{r}
+# randomly initialize weights
+
+D = ncol(Xtrain)
+
+W = rnorm(D)
+
+
+# make predictions
+
+sigmoid<- function(a){
+  
+    return (1 / (1 + exp(-a)))
+}
+
+forward<-function(X, W){
+
+    return (sigmoid(X%*%W))
+}
+
+
+P_Y_given_X = forward(X=Xtrain, W)
+
+predictions = round(P_Y_given_X)
+
+
+# calculate the accuracy
+
+classification_rate<-function(Y, P){
+
+    return (mean(Y == P))
+}
+
+classification_rate(Ytrain, predictions)
+```
+
+#Train the Model by minimizing the loss function using the gradian descent
+```{r}
+# Loss Function: cross entropy
+
+cross_entropy<-function(T, pY){
+  
+    return (-mean(T*log(pY) + (1 - T)*log(1 - pY)))
+}
+
+# train loop
+
+train_costs = c()
+
+test_costs = c()
+
+learning_rate <- 0.001
+
+for (i in 1:10000){
+  i=1
+
+    pYtrain = forward(Xtrain, W)
+
+    pYtest = forward(Xtest, W)
+
+    ctrain = cross_entropy(as.matrix(Ytrain), pYtrain)
+
+    ctest = cross_entropy(as.matrix(Ytest), pYtest)
+
+    train_costs[i]<-ctrain
+
+    test_costs[i]<-ctest
+
+    # gradient descent
+
+    W= W- learning_rate*t(Xtrain)%*%(pYtrain - as.matrix(Ytrain))
+
+}
+
+
+
+#Final train classification_rate:
+classification_rate(Ytrain, round(pYtrain))
+
+#Final test classification_rate:
+classification_rate(Ytest, round(pYtest))
+
+#Final parameter estimates:
+ W
+```
